@@ -28,7 +28,7 @@ class AiStylistViewModel @Inject constructor() : ViewModel() {
 
     val aiState: StateFlow<AiState> = _aiState.asStateFlow()
 
-    private val model = GenerativeModel(modelName = "gemini-2.5-flash", apiKey = BuildConfig.GEMINI_API_KEY)
+    private val model = GenerativeModel(modelName = "gemini-3.6-flash", apiKey = BuildConfig.GEMINI_API_KEY)
 
     private val _userVibe = MutableStateFlow("")
 
