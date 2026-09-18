@@ -1,0 +1,193 @@
+package com.example.wardrobeai.views.clothingList
+
+import android.content.Intent
+import android.os.Bundle
+import android.os.Environment
+import androidx.activity.compose.setContent
+import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.wardrobeai.adapters.ClosetItemListener
+import com.google.android.material.snackbar.Snackbar
+import dagger.hilt.android.AndroidEntryPoint
+import com.example.wardrobeai.models.clothing.ClosetOrganiserModel
+import com.example.wardrobeai.ui.auth.AuthStateViewModel
+import com.example.wardrobeai.ui.auth.AuthViewModel
+import com.example.wardrobeai.ui.auth.LoginScreen
+import com.example.wardrobeai.ui.auth.RegisterScreen
+import com.example.wardrobeai.ui.theme.ClosetOrganiserTheme
+import com.example.wardrobeai.ui.user.UserEditScreen
+import com.example.wardrobeai.ui.user.UserProfileScreen
+import com.example.wardrobeai.views.calendar.CalendarView
+import com.example.wardrobeai.views.clothing.ClothingView
+import com.example.wardrobeai.views.donation.DonationView
+import com.example.wardrobeai.views.donation.DonationViewModel
+import com.example.wardrobeai.views.outfits.OutfitView
+import com.example.wardrobeai.views.settings.SettingsScreen
+import com.example.wardrobeai.views.tryOn.TryOnView
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+@AndroidEntryPoint
+class ClothingListView : AppCompatActivity(), ClosetItemListener {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        setContent { ClosetOrganiserTheme {
+            val presenter: ClothingListPresenter = hiltViewModel()
+            val authStateVm: AuthStateViewModel = hiltViewModel()
+            val authVm: AuthViewModel = hiltViewModel()
+            val donationVm: DonationViewModel = hiltViewModel()
+
+            val user by authStateVm.user.collectAsState()
+            val syncState by presenter.syncState.collectAsStateWithLifecycle()
+            val exportJson by presenter.exportJson.collectAsStateWithLifecycle()
+
+            var showRegister by remember { mutableStateOf(false) }
+            var showProfile by remember { mutableStateOf(false) }
+            var showEditProfile by remember { mutableStateOf(false) }
+            var showSettings by remember { mutableStateOf(false) }
+
+            LaunchedEffect(exportJson) {
+                exportJson?.let { json ->
+                    writeAndShareExport(json)
+                    presenter.clearExport()
+                }
+            }
+
+            val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+            DisposableEffect(lifecycleOwner) {
+                val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                    if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                        presenter.refreshFromFirestore()
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(obs)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+            }
+
+            LaunchedEffect(user) {
+                if (user == null) {
+                    showRegister = false
+                    showProfile = false
+                    showEditProfile = false
+                    showSettings = false
+                }
+            }
+
+            if (user == null) {
+                if (showRegister) {
+                    RegisterScreen(onGoToLogin = { showRegister = false }, onRegistered = {})
+                } else {
+                    LoginScreen(onGoToRegister = { showRegister = true }, onSignedIn = { })
+                }
+                return@ClosetOrganiserTheme
+            }
+
+            LaunchedEffect(user) { presenter.refreshFromFirestore() }
+            LaunchedEffect(Unit) { presenter.fetchWeather() }
+
+            val context = LocalContext.current
+
+            if (showEditProfile) {
+                UserEditScreen(onBack = { showEditProfile = false })
+                return@ClosetOrganiserTheme
+            }
+
+            if (showSettings) {
+                SettingsScreen(
+                    syncState = syncState,
+                    onExportWardrobe = { presenter.exportWardrobe(); showSettings = false },
+                    onSyncToFirestore = { presenter.syncLocalToFirestore() },
+                    onSignOut = { authVm.signOut(); showSettings = false },
+                    onBack = { showSettings = false }
+                )
+                return@ClosetOrganiserTheme
+            }
+
+            if (showProfile) {
+                UserProfileScreen(
+                    onBack = { showProfile = false },
+                    onEditProfile = { showEditProfile = true },
+                    onNavigateToSettings = { showSettings = true }
+                )
+                return@ClosetOrganiserTheme
+            }
+
+            ClothingListScreen(
+                presenter = presenter,
+                context = context,
+                syncState = syncState,
+                onExportWardrobe = { presenter.exportWardrobe() },
+                onNavigateToClothing = { startActivity(Intent(this, ClothingView::class.java)) },
+                onNavigateToOutfit = { startActivity(Intent(this, OutfitView::class.java)) },
+                onNavigateToCalendar = { startActivity(Intent(this, CalendarView::class.java)) },
+                onClothingItemClick = { item ->
+                    startActivity(Intent(this, ClothingView::class.java).apply {
+                        putExtra("closet_item_edit", item)
+                    })
+                },
+                onOutfitItemClick = { outfit ->
+                    startActivity(Intent(this, OutfitView::class.java).apply {
+                        putExtra("outfit_item_edit", outfit)
+                    })
+                },
+                onDeleteItemClick = { item ->
+                    presenter.deleteClothing(item)
+                    showSnackbar("Deleted ${item.title}", Snackbar.LENGTH_SHORT)
+                },
+                showSnackbar = { message, duration -> showSnackbar(message, duration) },
+                onNavigateToProfile = { showProfile = true },
+                onNavigateToTryOn = { startActivity(Intent(this, TryOnView::class.java)) },
+                onNavigateToDonation = { startActivity(Intent(this, DonationView::class.java)) },
+            )
+        } }
+    }
+
+    private fun writeAndShareExport(json: String) {
+        try {
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val fileName = "wardrobe_backup_$timestamp.json"
+
+            val exportDir = File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: filesDir, "exports")
+            exportDir.mkdirs()
+            val file = File(exportDir, fileName)
+            file.writeText(json)
+
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this, "${packageName}.fileprovider", file
+            )
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, "Wardrobe Backup")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Export Wardrobe Backup"))
+            showSnackbar("Export ready - choose where to save", Snackbar.LENGTH_LONG)
+        } catch (e: Exception) {
+            showSnackbar("Export failed: ${e.message}", Snackbar.LENGTH_LONG)
+        }
+    }
+
+    override fun onResume() { super.onResume() }
+
+    override fun onClosetItemClick(item: ClosetOrganiserModel) {
+        startActivity(Intent(this, ClothingView::class.java).apply {
+            putExtra("closet_item_edit", item)
+        })
+    }
+
+    override fun onDeleteItemClick(item: ClosetOrganiserModel) {
+        showSnackbar("Deleted ${item.title}", Snackbar.LENGTH_SHORT)
+    }
+
+    fun showSnackbar(message: String, duration: Int) {
+        Snackbar.make(window.decorView.rootView, message, duration).show()
+    }
+}

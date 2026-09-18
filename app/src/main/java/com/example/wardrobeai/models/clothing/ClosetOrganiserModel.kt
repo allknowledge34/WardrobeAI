@@ -1,0 +1,22 @@
+package com.example.wardrobeai.models.clothing
+
+import android.net.Uri
+import android.os.Parcelable
+import kotlinx.parcelize.Parcelize
+import java.util.Date
+
+
+@Parcelize
+data class ClosetOrganiserModel(
+    var id: Long = 0,
+    var title: String = "",
+    var description: String = "",
+    var colourPattern: String = "",
+    var size: String = "",
+    var season: String = "",
+    var category: String = "",
+    var subCategory: String = "",
+    var lastWorn: Date = Date(),
+    var image: Uri? = Uri.EMPTY,
+    var imageUrl: String = ""
+) : Parcelable

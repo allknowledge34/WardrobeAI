@@ -1,0 +1,73 @@
+package com.example.wardrobeai.firebase.auth
+
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.UserProfileChangeRequest
+import com.example.wardrobeai.firebase.services.FirebaseSignInResponse
+import com.example.wardrobeai.firebase.services.AuthService
+import kotlinx.coroutines.tasks.await
+import javax.inject.Inject
+
+
+class AuthRepository
+@Inject constructor(private val firebaseAuth: FirebaseAuth)
+    : AuthService {
+
+    override val currentUserId: String
+        get() = firebaseAuth.currentUser?.uid.orEmpty()
+
+    override val currentUser: FirebaseUser?
+        get() = firebaseAuth.currentUser
+
+    override val isUserAuthenticatedInFirebase : Boolean
+        get() = firebaseAuth.currentUser != null
+
+
+    override suspend fun authenticateUser(email: String, password: String): FirebaseSignInResponse {
+        return try {
+            val result = firebaseAuth.signInWithEmailAndPassword(email, password).await()
+            Response.Success(result.user!!)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Response.Failure(e)
+        }
+    }
+
+    override suspend fun createUser(name: String, email: String, password: String): FirebaseSignInResponse {
+        return try {
+            val result = firebaseAuth.createUserWithEmailAndPassword(email, password).await()
+            result.user?.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(name).build())?.await()
+            return Response.Success(result.user!!)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Response.Failure(e)
+        }
+    }
+
+    override suspend fun signOut() {
+        firebaseAuth.signOut()
+    }
+
+    override suspend fun signInWithGoogle(idToken: String): FirebaseSignInResponse {
+        return try {
+            val credential = GoogleAuthProvider.getCredential(idToken, null)
+            val result = firebaseAuth.signInWithCredential(credential).await()
+            Response.Success(result.user!!)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Response.Failure(e)
+        }
+    }
+
+
+    override suspend fun sendPasswordResetEmail(email: String): Response<Unit> {
+        return try {
+            firebaseAuth.sendPasswordResetEmail(email).await()
+            Response.Success(Unit)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Response.Failure(e)
+        }
+    }
+}
