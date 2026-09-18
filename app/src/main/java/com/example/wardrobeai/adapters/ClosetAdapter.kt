@@ -6,7 +6,7 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.squareup.picasso.Picasso
 import com.example.wardrobeai.databinding.CardClothingBinding
-import ie.setu.project.models.clothing.ClosetOrganiserModel
+import com.example.wardrobeai.models.clothing.ClosetOrganiserModel
 
 interface ClosetItemListener {
 
