@@ -28,6 +28,7 @@ import javax.inject.Inject
 enum class SyncState {
     SYNCING,
     SYNCED,
+    OFFLINE_CACHE,
     OFFLINE_BACKUP,
     SYNC_ERROR
 }
